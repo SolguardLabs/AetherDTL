@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run baseline",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/aetherdtl",
+      "args": ["scenario", "baseline"],
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb"
+    }
+  ]
+}
