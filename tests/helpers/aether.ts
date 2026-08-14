@@ -9,7 +9,7 @@ const exeName = process.platform === "win32" ? "aetherdtl.exe" : "aetherdtl";
 const defaultBin = join(root, "build", exeName);
 
 export type ScenarioPayload = {
-  lab: string;
+  protocol: string;
   scenario: string;
   network_id: string;
   clock: number;
@@ -23,6 +23,8 @@ export type ScenarioPayload = {
   events: Array<Record<string, any>>;
   totals: Record<string, any>;
   risk: Record<string, any>;
+  economic_risk: Record<string, any>;
+  security: Record<string, any>;
   invariants: Record<string, any>;
   notes: string[];
 };
@@ -40,7 +42,9 @@ export function ensureBuilt(): void {
     stdio: "pipe",
   });
   if (result.status !== 0) {
-    throw new Error(["build failed", result.stdout.trim(), result.stderr.trim()].filter(Boolean).join("\n"));
+    throw new Error(
+      ["build failed", result.stdout.trim(), result.stderr.trim()].filter(Boolean).join("\n"),
+    );
   }
 }
 
@@ -86,9 +90,9 @@ export function assertDigest(value: unknown): void {
 }
 
 export function assertCommon(payload: ScenarioPayload, scenario: string): void {
-  assert.equal(payload.lab, "AetherDTL");
+  assert.equal(payload.protocol, "AetherDTL");
   assert.equal(payload.scenario, scenario);
-  assert.equal(payload.network_id, "aether-local-intentnet");
+  assert.equal(payload.network_id, "aether-intentnet-1");
   assertDigest(payload.state_digest);
   assert.ok(payload.assets.length >= 3);
   assert.ok(payload.lanes.length >= 3);
@@ -102,4 +106,7 @@ export function assertCommon(payload: ScenarioPayload, scenario: string): void {
   assert.equal(payload.invariants.plans_have_intents, true);
   assert.equal(payload.invariants.local_limits_hold, true);
   assert.equal(payload.invariants.lifecycle_consistent, true);
+  assert.equal(payload.invariants.replays_rejected, true);
+  assert.equal(payload.invariants.vault_floors_hold, true);
+  assert.equal(payload.invariants.reconciliation_consistent, true);
 }

@@ -14,6 +14,8 @@ std::string to_string(AccountRole role) {
             return "vault";
         case AccountRole::FeeCollector:
             return "fee_collector";
+        case AccountRole::Guardian:
+            return "guardian";
         case AccountRole::System:
             return "system";
     }
@@ -84,6 +86,8 @@ std::string to_string(EventKind kind) {
             return "exposure_updated";
         case EventKind::ClockAdvanced:
             return "clock_advanced";
+        case EventKind::PauseChanged:
+            return "pause_changed";
     }
     return "unknown";
 }

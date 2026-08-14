@@ -10,6 +10,7 @@ const output = join(outDir, exeName);
 const args = new Set(process.argv.slice(2));
 const warnings = args.has("--warnings");
 const clean = args.has("--clean");
+const sanitizers = args.has("--sanitizers");
 
 function sources() {
   return readdirSync(join(root, "src"))
@@ -31,11 +32,13 @@ function commandExists(command) {
   if (process.platform === "win32") {
     return run("where.exe", [command]).status === 0;
   }
-  return spawnSync("sh", ["-c", `command -v "${command.replaceAll('"', '\\"')}"`], {
-    cwd: root,
-    encoding: "utf8",
-    stdio: "pipe",
-  }).status === 0;
+  return (
+    spawnSync("sh", ["-c", `command -v "${command.replaceAll('"', '\\"')}"`], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: "pipe",
+    }).status === 0
+  );
 }
 
 function quote(value) {
@@ -49,10 +52,46 @@ function findMsvcVcvars() {
   const roots = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"]].filter(Boolean);
   const candidates = [
     ...roots.flatMap((root) => [
-      join(root, "Microsoft Visual Studio", "2022", "Community", "VC", "Auxiliary", "Build", "vcvars64.bat"),
-      join(root, "Microsoft Visual Studio", "2022", "Professional", "VC", "Auxiliary", "Build", "vcvars64.bat"),
-      join(root, "Microsoft Visual Studio", "2022", "Enterprise", "VC", "Auxiliary", "Build", "vcvars64.bat"),
-      join(root, "Microsoft Visual Studio", "2022", "BuildTools", "VC", "Auxiliary", "Build", "vcvars64.bat"),
+      join(
+        root,
+        "Microsoft Visual Studio",
+        "2022",
+        "Community",
+        "VC",
+        "Auxiliary",
+        "Build",
+        "vcvars64.bat",
+      ),
+      join(
+        root,
+        "Microsoft Visual Studio",
+        "2022",
+        "Professional",
+        "VC",
+        "Auxiliary",
+        "Build",
+        "vcvars64.bat",
+      ),
+      join(
+        root,
+        "Microsoft Visual Studio",
+        "2022",
+        "Enterprise",
+        "VC",
+        "Auxiliary",
+        "Build",
+        "vcvars64.bat",
+      ),
+      join(
+        root,
+        "Microsoft Visual Studio",
+        "2022",
+        "BuildTools",
+        "VC",
+        "Auxiliary",
+        "Build",
+        "vcvars64.bat",
+      ),
     ]),
   ];
   const vswhere = join(
@@ -122,11 +161,27 @@ function buildWithMsvcVcvars(vcvars, src) {
 }
 
 function buildWithUnix(command, src) {
-  const flags = ["-std=c++20", "-O2", "-I", join(root, "src"), ...src, "-o", output];
+  const flags = [
+    "-std=c++20",
+    sanitizers ? "-O1" : "-O2",
+    "-I",
+    join(root, "src"),
+    ...src,
+    "-o",
+    output,
+  ];
   if (warnings) {
     flags.splice(2, 0, "-Wall", "-Wextra", "-Werror", "-pedantic");
   }
+  if (sanitizers) {
+    flags.splice(2, 0, "-fsanitize=address,undefined", "-fno-omit-frame-pointer");
+  }
   return run(command, flags, { stdio: "inherit" });
+}
+
+if (sanitizers && process.platform === "win32") {
+  console.error("Sanitizer builds are supported by the Linux quality job.");
+  process.exit(2);
 }
 
 if (clean) {

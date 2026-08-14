@@ -28,6 +28,7 @@ enum class AccountRole {
     Operator,
     Vault,
     FeeCollector,
+    Guardian,
     System,
 };
 
@@ -63,6 +64,7 @@ enum class EventKind {
     FeeAccrued,
     ExposureUpdated,
     ClockAdvanced,
+    PauseChanged,
 };
 
 std::string to_string(AccountRole role);
@@ -440,6 +442,9 @@ struct EngineInvariants {
     bool plans_have_intents = true;
     bool local_limits_hold = true;
     bool lifecycle_consistent = true;
+    bool replays_rejected = true;
+    bool vault_floors_hold = true;
+    bool reconciliation_consistent = true;
 };
 
 class SettlementEngine;
@@ -713,6 +718,102 @@ class OperatorScorer {
                           const std::string& target_asset) const;
 };
 
+enum class SecuritySignalKind {
+    EmergencyPause,
+    VaultFloor,
+    OperatorConcentration,
+    LaneConcentration,
+    RejectionRate,
+    ReserveCoverage,
+};
+
+std::string to_string(SecuritySignalKind kind);
+
+struct SecurityLimits {
+    Units maximum_operator_concentration_bps = 7'500;
+    Units maximum_lane_concentration_bps = 8'500;
+    Units maximum_rejection_rate_bps = 5'000;
+    Units minimum_reserve_coverage_bps = 12'500;
+
+    void validate() const;
+};
+
+struct SecuritySignal {
+    SecuritySignalKind kind = SecuritySignalKind::EmergencyPause;
+    std::string subject;
+    Units observed = 0;
+    Units threshold = 0;
+    std::string unit = "bps";
+    bool critical = false;
+
+    std::string canonical() const;
+};
+
+struct SecuritySnapshot {
+    bool paused = false;
+    bool healthy = true;
+    Amount executed_source;
+    Amount available_reserves;
+    Units reserve_coverage_bps = 0;
+    Units rejection_rate_bps = 0;
+    Units largest_operator_bps = 0;
+    Units largest_lane_bps = 0;
+    std::vector<SecuritySignal> signals;
+
+    std::string canonical() const;
+};
+
+class SecurityMonitor {
+  public:
+    SecuritySnapshot evaluate(const SettlementEngine& engine,
+                              const SecurityLimits& limits = SecurityLimits{}) const;
+};
+
+struct StressParameters {
+    Units source_price_shock_bps = 1'800;
+    Units target_price_shock_bps = 1'250;
+    Units liquidity_haircut_bps = 900;
+    Units common_correlation_bps = 3'500;
+    Units operator_default_bps = 1'500;
+    Units concentration_charge_bps = 600;
+    Units operational_buffer_bps = 800;
+
+    void validate() const;
+};
+
+struct EconomicRiskCell {
+    std::string key;
+    Amount source_notional;
+    Amount target_notional;
+    Amount stressed_loss;
+
+    std::string canonical() const;
+};
+
+struct EconomicRiskSnapshot {
+    Amount gross_source_notional;
+    Amount gross_target_notional;
+    Amount standalone_loss;
+    Amount correlated_loss;
+    Amount concentration_charge;
+    Amount operational_buffer;
+    Amount required_reserve;
+    Amount available_reserve;
+    Amount shortfall;
+    Units coverage_bps = 0;
+    Units largest_cell_bps = 0;
+    std::vector<EconomicRiskCell> cells;
+
+    bool solvent() const;
+    std::string canonical() const;
+};
+
+class EconomicRiskModel {
+  public:
+    EconomicRiskSnapshot assess(const SettlementEngine& engine,
+                                const StressParameters& parameters = StressParameters{}) const;
+};
+
 class SettlementEngine {
   public:
     SettlementEngine();
@@ -731,6 +832,9 @@ class SettlementEngine {
     Intent sign_intent(Intent intent);
     bool submit_intent(Intent intent);
     bool cancel_intent(const std::string& intent_id, const std::string& owner);
+    bool set_emergency_pause(const std::string& actor, bool paused, std::string reason);
+    bool paused() const;
+    const std::string& pause_reason() const;
     ExecutionPlan execute_plan(ExecutionPlan plan);
 
     const std::vector<ExecutionPlan>& plans() const;
@@ -755,6 +859,8 @@ class SettlementEngine {
     Matcher matcher_;
     std::map<ExposureKey, ExposureBucket> exposures_;
     std::vector<ExecutionPlan> plans_;
+    bool paused_ = false;
+    std::string pause_reason_;
 };
 
 struct ScenarioResult {
@@ -769,6 +875,7 @@ struct ScenarioAccounts {
     std::string operator_a = "operator-a";
     std::string operator_b = "operator-b";
     std::string fee_collector = "fee-collector";
+    std::string guardian = "risk-council";
     std::string usdc_vault = "vault-usdc";
     std::string eur_vault = "vault-eur";
     std::string gbp_vault = "vault-gbp";
@@ -782,6 +889,9 @@ class ScenarioFactory {
     ScenarioResult cancellation() const;
     ScenarioResult matching_controls() const;
     ScenarioResult operator_rotation() const;
+    ScenarioResult emergency_pause() const;
+    ScenarioResult replay_control() const;
+    ScenarioResult reserve_preflight() const;
 
   private:
     SettlementEngine base_engine(Timestamp now) const;
@@ -815,6 +925,8 @@ class JsonWriter {
     void write_events(const SettlementEngine& engine);
     void write_totals(const SettlementEngine& engine);
     void write_risk(const SettlementEngine& engine);
+    void write_economic_risk(const SettlementEngine& engine);
+    void write_security(const SettlementEngine& engine);
     void write_invariants(const SettlementEngine& engine);
     void write_notes(const ScenarioResult& result);
 

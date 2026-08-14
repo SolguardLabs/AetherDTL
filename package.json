@@ -1,19 +1,24 @@
 {
   "name": "aetherdtl",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "C++ DTL intent network simulator with TypeScript integration tests.",
+  "description": "C++20 intent settlement network with deterministic risk and security telemetry.",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "clean": "node scripts/build.mjs --clean",
     "test": "node scripts/build.mjs && node --test \"tests/node/*.test.ts\"",
-    "ci": "node scripts/build.mjs --warnings && node --test \"tests/node/*.test.ts\"",
+    "test:node": "node --test \"tests/node/*.test.ts\"",
+    "smoke": "node scripts/smoke.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "ci": "npm run format:check && node scripts/build.mjs --warnings && npm run test:node && npm run smoke && npm run loc",
     "loc": "node scripts/check-loc.mjs"
   },
   "engines": {
     "node": ">=24"
   },
   "devDependencies": {
-    "prettier": "^3.8.3"
+    "prettier": "3.8.3"
   }
 }

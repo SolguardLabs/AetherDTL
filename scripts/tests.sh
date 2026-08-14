@@ -12,3 +12,4 @@ fi
 
 "$NODE_BIN" scripts/build.mjs
 "$NODE_BIN" --test "tests/node/*.test.ts"
+"$NODE_BIN" scripts/smoke.mjs

@@ -1,20 +1,73 @@
-name: ci
+name: CI
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  quality:
+    name: C++ and TypeScript
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
+          cache: npm
+
       - name: Install compiler
         run: sudo apt-get update && sudo apt-get install -y build-essential
-      - name: Install dependencies
-        run: npm install
-      - name: Run CI
+
+      - name: Run quality gate
         run: bash scripts/ci.sh
+
+  sanitizers:
+    name: Address and undefined behavior sanitizers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build with sanitizers
+        run: node scripts/build.mjs --clean --warnings --sanitizers
+
+      - name: Exercise every scenario
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: node scripts/smoke.mjs
+
+  release-integrity:
+    name: Release integrity
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [quality, sanitizers]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Match tag and package version
+        shell: bash
+        run: test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
