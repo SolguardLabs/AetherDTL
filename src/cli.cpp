@@ -6,7 +6,7 @@ namespace aether {
 namespace {
 
 void print_help(std::ostream& out) {
-    out << "AetherDTL local intent network\n";
+    out << "AetherDTL intent settlement network\n";
     out << "\n";
     out << "Usage:\n";
     out << "  aetherdtl --list\n";

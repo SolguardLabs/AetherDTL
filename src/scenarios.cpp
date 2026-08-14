@@ -58,6 +58,7 @@ void seed_signers(SettlementEngine& engine) {
     engine.signer().register_secret("operator-a", "operator-a-local-aether-secret");
     engine.signer().register_secret("operator-b", "operator-b-local-aether-secret");
     engine.signer().register_secret("fee-collector", "fees-local-aether-secret");
+    engine.signer().register_secret("risk-council", "risk-council-local-aether-secret");
 }
 
 }  // namespace
@@ -134,6 +135,16 @@ SettlementEngine ScenarioFactory::base_engine(Timestamp now) const {
                 {"aUSDC", Amount::of(0)},
                 {"aEUR", Amount::of(0)}
             }
+        ),
+        now
+    );
+    engine.ledger().register_account(
+        account(
+            accounts.guardian,
+            "Aether Risk Council",
+            AccountRole::Guardian,
+            engine.signer().public_key(accounts.guardian),
+            {}
         ),
         now
     );
@@ -474,6 +485,108 @@ ScenarioResult ScenarioFactory::operator_rotation() const {
     return result;
 }
 
+ScenarioResult ScenarioFactory::emergency_pause() const {
+    ScenarioAccounts accounts;
+    ScenarioResult result;
+    result.name = "emergency-pause";
+    result.engine = base_engine(kStartTime);
+
+    auto intent = result.engine.sign_intent(base_intent(accounts, kStartTime));
+    result.engine.submit_intent(intent);
+
+    result.engine.set_time(kStartTime + 10);
+    if (!result.engine.set_emergency_pause(accounts.guardian, true, "oracle divergence")) {
+        throw std::runtime_error("guardian could not pause settlement");
+    }
+
+    auto blocked = plan_for(
+        intent,
+        "plan-pause-blocked",
+        accounts.operator_a,
+        "twap-4",
+        {
+            slice("slice-pause-blocked", "usdc-eur-primary", 300'000'000, 282'000'000, 0)
+        },
+        kStartTime + 20
+    );
+    result.engine.set_time(kStartTime + 20);
+    result.engine.execute_plan(blocked);
+
+    result.engine.set_time(kStartTime + 25);
+    if (!result.engine.set_emergency_pause(accounts.guardian, false, "")) {
+        throw std::runtime_error("guardian could not resume settlement");
+    }
+
+    auto admitted = plan_for(
+        intent,
+        "plan-pause-admitted",
+        accounts.operator_a,
+        "twap-4",
+        {
+            slice("slice-pause-admitted", "usdc-eur-primary", 300'000'000, 282'000'000, 0)
+        },
+        kStartTime + 30
+    );
+    result.engine.set_time(kStartTime + 30);
+    result.engine.execute_plan(admitted);
+    result.notes.push_back("guardian pause blocks admission without mutating settlement balances");
+    result.notes.push_back("a new plan can execute after an explicit guardian resume event");
+    return result;
+}
+
+ScenarioResult ScenarioFactory::replay_control() const {
+    ScenarioAccounts accounts;
+    ScenarioResult result;
+    result.name = "replay-control";
+    result.engine = base_engine(kStartTime);
+
+    auto intent = result.engine.sign_intent(base_intent(accounts, kStartTime));
+    result.engine.submit_intent(intent);
+    auto plan = plan_for(
+        intent,
+        "plan-replay-stable-id",
+        accounts.operator_a,
+        "twap-4",
+        {
+            slice("slice-replay-0", "usdc-eur-primary", 300'000'000, 282'000'000, 0)
+        },
+        kStartTime + 30
+    );
+    result.engine.set_time(kStartTime + 30);
+    result.engine.execute_plan(plan);
+
+    plan.submitted_at = kStartTime + 60;
+    result.engine.set_time(kStartTime + 60);
+    result.engine.execute_plan(plan);
+    result.notes.push_back("plan identifiers are idempotency keys across operator submissions");
+    return result;
+}
+
+ScenarioResult ScenarioFactory::reserve_preflight() const {
+    ScenarioAccounts accounts;
+    ScenarioResult result;
+    result.name = "reserve-preflight";
+    result.engine = base_engine(kStartTime);
+
+    auto intent = result.engine.sign_intent(base_intent(accounts, kStartTime));
+    result.engine.submit_intent(intent);
+    auto plan = plan_for(
+        intent,
+        "plan-reserve-preflight",
+        accounts.operator_a,
+        "twap-4",
+        {
+            slice("slice-reserve-0", "usdc-eur-primary", 600'000'000, 5'000'000'000, 0),
+            slice("slice-reserve-1", "usdc-eur-primary", 600'000'000, 5'000'000'000, 1)
+        },
+        kStartTime + 30
+    );
+    result.engine.set_time(kStartTime + 30);
+    result.engine.execute_plan(plan);
+    result.notes.push_back("aggregate vault demand is validated before any transfer is committed");
+    return result;
+}
+
 std::vector<std::string> scenario_names() {
     return {
         "baseline",
@@ -481,7 +594,10 @@ std::vector<std::string> scenario_names() {
         "expiration",
         "cancellation",
         "matching-controls",
-        "operator-rotation"
+        "operator-rotation",
+        "emergency-pause",
+        "replay-control",
+        "reserve-preflight"
     };
 }
 
@@ -504,6 +620,15 @@ ScenarioResult run_scenario(const std::string& name) {
     }
     if (name == "operator-rotation") {
         return factory.operator_rotation();
+    }
+    if (name == "emergency-pause") {
+        return factory.emergency_pause();
+    }
+    if (name == "replay-control") {
+        return factory.replay_control();
+    }
+    if (name == "reserve-preflight") {
+        return factory.reserve_preflight();
     }
     throw std::runtime_error("unknown scenario: " + name);
 }

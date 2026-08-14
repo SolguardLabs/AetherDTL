@@ -168,8 +168,71 @@ bool SettlementEngine::cancel_intent(const std::string& intent_id, const std::st
     }
 }
 
+bool SettlementEngine::set_emergency_pause(const std::string& actor,
+                                           bool paused,
+                                           std::string reason) {
+    if (!ledger_.has_account(actor)) {
+        return false;
+    }
+    const auto& account = ledger_.account(actor);
+    if (!account.active ||
+        (account.role != AccountRole::Guardian && account.role != AccountRole::System)) {
+        return false;
+    }
+    if (paused && reason.empty()) {
+        return false;
+    }
+
+    paused_ = paused;
+    pause_reason_ = paused ? std::move(reason) : "";
+    ledger_.journal().push(
+        EventKind::PauseChanged,
+        now_,
+        actor,
+        "",
+        Amount::of(paused ? 1 : 0),
+        paused ? pause_reason_ : "network resumed"
+    );
+    return true;
+}
+
+bool SettlementEngine::paused() const {
+    return paused_;
+}
+
+const std::string& SettlementEngine::pause_reason() const {
+    return pause_reason_;
+}
+
 ExecutionPlan SettlementEngine::execute_plan(ExecutionPlan plan) {
     intents_.expire_due(now_, ledger_.journal());
+
+    if (!plan.id.empty()) {
+        const auto replay = std::find_if(
+            plans_.begin(),
+            plans_.end(),
+            [&](const ExecutionPlan& prior) { return prior.id == plan.id; }
+        );
+        if (replay != plans_.end()) {
+            record_rejection(
+                plan,
+                MatchResult::reject({
+                    ValidationIssue::of("plan_duplicate", "execution plan id was already observed")
+                })
+            );
+            return plan;
+        }
+    }
+
+    if (paused_) {
+        record_rejection(
+            plan,
+            MatchResult::reject({
+                ValidationIssue::of("network_paused", "settlement admission is paused")
+            })
+        );
+        return plan;
+    }
 
     if (!intents_.contains(plan.intent_id)) {
         plan.status = PlanStatus::Rejected;
@@ -193,8 +256,11 @@ ExecutionPlan SettlementEngine::execute_plan(ExecutionPlan plan) {
         return plan;
     }
 
-    auto& bucket = bucket_for(intent, plan);
-    const auto projected_source = bucket.used_source.checked_add(match.gross_source);
+    const ExposureKey exposure_key{intent.id, plan.strategy_id};
+    const auto found_bucket = exposures_.find(exposure_key);
+    const auto current_source =
+        found_bucket == exposures_.end() ? Amount::zero() : found_bucket->second.used_source;
+    const auto projected_source = current_source.checked_add(match.gross_source);
     if (projected_source > intent.max_source) {
         record_rejection(
             plan,
@@ -204,6 +270,11 @@ ExecutionPlan SettlementEngine::execute_plan(ExecutionPlan plan) {
         );
         return plan;
     }
+
+    const auto ledger_before = ledger_;
+    const auto intents_before = intents_;
+    const auto exposures_before = exposures_;
+    auto& bucket = bucket_for(intent, plan);
 
     plan.status = PlanStatus::Matched;
     plan.reason = "accepted";
@@ -216,7 +287,20 @@ ExecutionPlan SettlementEngine::execute_plan(ExecutionPlan plan) {
         "plan matched"
     );
 
-    apply_execution(intent, plan, match, bucket);
+    try {
+        apply_execution(intent, plan, match, bucket);
+    } catch (const std::exception& error) {
+        ledger_ = ledger_before;
+        intents_ = intents_before;
+        exposures_ = exposures_before;
+        record_rejection(
+            plan,
+            MatchResult::reject({
+                ValidationIssue::of("atomic_execution", std::string("execution rolled back:") + error.what())
+            })
+        );
+        return plan;
+    }
     plan.status = PlanStatus::Executed;
     plan.reason = "executed";
     plans_.push_back(plan);
@@ -272,6 +356,16 @@ EngineInvariants SettlementEngine::invariants() const {
     EngineInvariants result;
     result.ledger_non_negative = ledger_.verify_non_negative();
 
+    std::set<std::string> observed_plan_ids;
+    for (const auto& plan : plans_) {
+        if (plan.id.empty()) {
+            continue;
+        }
+        if (!observed_plan_ids.insert(plan.id).second && plan.status != PlanStatus::Rejected) {
+            result.replays_rejected = false;
+        }
+    }
+
     for (const auto& intent : intents_.intents()) {
         bool signature_ok = false;
         try {
@@ -315,6 +409,14 @@ EngineInvariants SettlementEngine::invariants() const {
         }
     }
 
+    Reconciler reconciler;
+    result.vault_floors_hold = reconciler.account_floors_hold(*this);
+    const auto assets = ledger_.assets();
+    if (assets.size() >= 2) {
+        result.reconciliation_consistent =
+            reconciler.frame_is_consistent(*this, assets[0].id, assets[1].id);
+    }
+
     return result;
 }
 
@@ -323,6 +425,8 @@ std::string SettlementEngine::digest() const {
         "engine",
         std::to_string(now_),
         ledger_.digest(),
+        bool_json(paused_),
+        pause_reason_,
     };
 
     for (const auto& intent : intents_.intents()) {

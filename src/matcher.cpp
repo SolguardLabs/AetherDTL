@@ -86,6 +86,20 @@ MatchResult Matcher::evaluate(const Ledger& ledger,
                               Timestamp now) const {
     std::vector<ValidationIssue> issues;
 
+    if (plan.id.empty()) {
+        issues.push_back(ValidationIssue::of("plan_id", "execution plan id is required"));
+    }
+
+    if (plan.strategy_id.empty()) {
+        issues.push_back(ValidationIssue::of("strategy_id", "execution strategy id is required"));
+    }
+
+    if (plan.submitted_at > now) {
+        issues.push_back(ValidationIssue::of("plan_time", "execution plan is dated in the future"));
+    } else if (plan.submitted_at < intent.valid_after || now - plan.submitted_at > 300) {
+        issues.push_back(ValidationIssue::of("plan_stale", "execution plan is outside its admission window"));
+    }
+
     if (!ledger.has_account(intent.owner)) {
         issues.push_back(ValidationIssue::of("owner_missing", "intent owner is not registered"));
     }
@@ -142,6 +156,7 @@ MatchResult Matcher::evaluate(const Ledger& ledger,
     Amount operator_fee = Amount::zero();
     Amount protocol_fee = Amount::zero();
     Amount rebate = Amount::zero();
+    std::map<std::pair<std::string, std::string>, Amount> vault_payouts;
 
     std::set<std::string> slice_ids;
     for (const auto& slice : plan.slices) {
@@ -163,6 +178,10 @@ MatchResult Matcher::evaluate(const Ledger& ledger,
             issues.push_back(*amount_issue);
             continue;
         }
+
+        const auto vault_key = std::make_pair(lane.settlement_vault, lane.target_asset);
+        vault_payouts[vault_key] =
+            vault_payouts[vault_key].checked_add(slice.quoted_target);
 
         const auto expected_target = ledger.quote(intent.source_asset, intent.target_asset, slice.source_amount);
         const auto price_issue = check_price(intent, slice, expected_target);
@@ -199,6 +218,16 @@ MatchResult Matcher::evaluate(const Ledger& ledger,
     if (ledger.has_account(intent.owner) && gross_source.is_positive()) {
         if (ledger.balance_of(intent.owner, intent.source_asset) < gross_source) {
             issues.push_back(ValidationIssue::of("owner_balance", "intent owner balance is insufficient"));
+        }
+    }
+
+    for (const auto& [vault_key, required] : vault_payouts) {
+        const auto& [vault_id, asset_id] = vault_key;
+        if (ledger.has_account(vault_id) && ledger.balance_of(vault_id, asset_id) < required) {
+            issues.push_back(ValidationIssue::of(
+                "vault_liquidity",
+                "aggregate settlement payout exceeds vault liquidity"
+            ));
         }
     }
 

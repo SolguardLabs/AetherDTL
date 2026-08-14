@@ -1,8 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertCommon, assertDigest, byId, listScenarios, runBinary, runScenario } from "../helpers/aether.ts";
+import {
+  assertCommon,
+  assertDigest,
+  byId,
+  listScenarios,
+  runBinary,
+  runScenario,
+} from "../helpers/aether.ts";
 
-test("CLI lists stable audit scenarios", () => {
+test("CLI lists stable operational scenarios", () => {
   assert.deepEqual(listScenarios(), [
     "baseline",
     "partial-fill",
@@ -10,6 +17,9 @@ test("CLI lists stable audit scenarios", () => {
     "cancellation",
     "matching-controls",
     "operator-rotation",
+    "emergency-pause",
+    "replay-control",
+    "reserve-preflight",
   ]);
 });
 

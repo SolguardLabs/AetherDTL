@@ -34,9 +34,9 @@ JsonWriter::JsonWriter(std::ostream& out) : out_(out) {}
 
 void JsonWriter::write_scenario(const ScenarioResult& result) {
     out_ << "{";
-    out_ << "\"lab\":\"AetherDTL\",";
+    out_ << "\"protocol\":\"AetherDTL\",";
     out_ << "\"scenario\":" << quote(result.name) << ",";
-    out_ << "\"network_id\":\"aether-local-intentnet\",";
+    out_ << "\"network_id\":\"aether-intentnet-1\",";
     out_ << "\"clock\":" << result.engine.now() << ",";
     out_ << "\"state_digest\":" << quote(result.engine.digest()) << ",";
     write_assets(result.engine);
@@ -56,6 +56,10 @@ void JsonWriter::write_scenario(const ScenarioResult& result) {
     write_totals(result.engine);
     out_ << ",";
     write_risk(result.engine);
+    out_ << ",";
+    write_economic_risk(result.engine);
+    out_ << ",";
+    write_security(result.engine);
     out_ << ",";
     write_invariants(result.engine);
     out_ << ",";
@@ -279,6 +283,64 @@ void JsonWriter::write_risk(const SettlementEngine& engine) {
     out_ << "}";
 }
 
+void JsonWriter::write_economic_risk(const SettlementEngine& engine) {
+    const auto risk = EconomicRiskModel{}.assess(engine);
+    out_ << "\"economic_risk\":{";
+    out_ << "\"gross_source_notional\":" << risk.gross_source_notional.units << ",";
+    out_ << "\"gross_target_notional\":" << risk.gross_target_notional.units << ",";
+    out_ << "\"standalone_loss\":" << risk.standalone_loss.units << ",";
+    out_ << "\"correlated_loss\":" << risk.correlated_loss.units << ",";
+    out_ << "\"concentration_charge\":" << risk.concentration_charge.units << ",";
+    out_ << "\"operational_buffer\":" << risk.operational_buffer.units << ",";
+    out_ << "\"required_reserve\":" << risk.required_reserve.units << ",";
+    out_ << "\"available_reserve\":" << risk.available_reserve.units << ",";
+    out_ << "\"shortfall\":" << risk.shortfall.units << ",";
+    out_ << "\"coverage_bps\":" << risk.coverage_bps << ",";
+    out_ << "\"largest_cell_bps\":" << risk.largest_cell_bps << ",";
+    out_ << "\"solvent\":" << bool_json(risk.solvent()) << ",";
+    out_ << "\"cells\":[";
+    for (std::size_t i = 0; i < risk.cells.size(); ++i) {
+        comma(out_, i != 0);
+        const auto& cell = risk.cells[i];
+        out_ << "{";
+        out_ << "\"key\":" << quote(cell.key) << ",";
+        out_ << "\"source_notional\":" << cell.source_notional.units << ",";
+        out_ << "\"target_notional\":" << cell.target_notional.units << ",";
+        out_ << "\"stressed_loss\":" << cell.stressed_loss.units;
+        out_ << "}";
+    }
+    out_ << "]";
+    out_ << "}";
+}
+
+void JsonWriter::write_security(const SettlementEngine& engine) {
+    const auto security = SecurityMonitor{}.evaluate(engine);
+    out_ << "\"security\":{";
+    out_ << "\"paused\":" << bool_json(security.paused) << ",";
+    out_ << "\"healthy\":" << bool_json(security.healthy) << ",";
+    out_ << "\"executed_source\":" << security.executed_source.units << ",";
+    out_ << "\"available_reserves\":" << security.available_reserves.units << ",";
+    out_ << "\"reserve_coverage_bps\":" << security.reserve_coverage_bps << ",";
+    out_ << "\"rejection_rate_bps\":" << security.rejection_rate_bps << ",";
+    out_ << "\"largest_operator_bps\":" << security.largest_operator_bps << ",";
+    out_ << "\"largest_lane_bps\":" << security.largest_lane_bps << ",";
+    out_ << "\"signals\":[";
+    for (std::size_t i = 0; i < security.signals.size(); ++i) {
+        comma(out_, i != 0);
+        const auto& signal = security.signals[i];
+        out_ << "{";
+        out_ << "\"kind\":" << quote(to_string(signal.kind)) << ",";
+        out_ << "\"subject\":" << quote(signal.subject) << ",";
+        out_ << "\"observed\":" << signal.observed << ",";
+        out_ << "\"threshold\":" << signal.threshold << ",";
+        out_ << "\"unit\":" << quote(signal.unit) << ",";
+        out_ << "\"critical\":" << bool_json(signal.critical);
+        out_ << "}";
+    }
+    out_ << "]";
+    out_ << "}";
+}
+
 void JsonWriter::write_invariants(const SettlementEngine& engine) {
     const auto invariants = engine.invariants();
     out_ << "\"invariants\":{";
@@ -286,7 +348,11 @@ void JsonWriter::write_invariants(const SettlementEngine& engine) {
     out_ << "\"signatures_valid\":" << bool_json(invariants.signatures_valid) << ",";
     out_ << "\"plans_have_intents\":" << bool_json(invariants.plans_have_intents) << ",";
     out_ << "\"local_limits_hold\":" << bool_json(invariants.local_limits_hold) << ",";
-    out_ << "\"lifecycle_consistent\":" << bool_json(invariants.lifecycle_consistent);
+    out_ << "\"lifecycle_consistent\":" << bool_json(invariants.lifecycle_consistent) << ",";
+    out_ << "\"replays_rejected\":" << bool_json(invariants.replays_rejected) << ",";
+    out_ << "\"vault_floors_hold\":" << bool_json(invariants.vault_floors_hold) << ",";
+    out_ << "\"reconciliation_consistent\":"
+         << bool_json(invariants.reconciliation_consistent);
     out_ << "}";
 }
 
