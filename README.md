@@ -1,5 +1,3 @@
-![AetherDTL](./assets/banner.png)
-
 # AetherDTL
 
 [![CI](https://github.com/SolguardLabs/AetherDTL/actions/workflows/ci.yml/badge.svg)](https://github.com/SolguardLabs/AetherDTL/actions/workflows/ci.yml)
@@ -7,6 +5,8 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg)](https://isocpp.org/)
 [![Node.js 24](https://img.shields.io/badge/Node.js-24-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-F2E9D8.svg)](./LICENSE)
+
+![AetherDTL](./assets/banner.png)
 
 AetherDTL es una red de liquidación de intents económicos. Los usuarios firman límites y
 condiciones de ejecución; los operadores autorizados construyen planes fragmentados sobre lanes
