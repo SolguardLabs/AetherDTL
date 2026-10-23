@@ -11,7 +11,7 @@ flowchart LR
     PR --> CI["Quality + sanitizers"]
     CI --> M["main"]
     M --> P["production"]
-    P --> T["tag v1.0.0"]
+    P --> T["tag v2.0.0"]
     T --> R["Release"]
 ```
 

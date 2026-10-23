@@ -53,6 +53,10 @@ required[vault, asset] = Σ quoted_target de todos los slices compatibles
 Cada agregado debe ser menor o igual al saldo disponible. Esta comprobación evita aprobar dos
 slices que individualmente caben en el vault pero conjuntamente lo superan.
 
+El source consumido se agrega por intent firmado, aunque los planes utilicen estrategias
+operativas distintas. El catálogo de estrategias conserva su utilidad para reporting sin
+fragmentar el límite autorizado por el owner.
+
 ## Aplicación Atómica
 
 ```mermaid
@@ -67,10 +71,11 @@ sequenceDiagram
     E->>L: debitar vault target
     E->>L: acreditar owner y fees
     E->>X: actualizar exposición
-    alt todas las operaciones correctas
+    E->>E: calcular cobertura posterior al plan
+    alt operaciones correctas y cobertura suficiente
         E->>I: actualizar estado
         E->>E: confirmar plan
-    else excepción
+    else excepción o capital insuficiente
         E->>L: restaurar snapshot
         E->>I: restaurar snapshot
         E->>X: restaurar snapshot
@@ -78,8 +83,8 @@ sequenceDiagram
     end
 ```
 
-La operación se considera confirmada solo después de aplicar todos los slices. El journal del
-snapshot parcial también se descarta durante el rollback.
+La operación se considera confirmada solo después de aplicar todos los slices y superar la
+comprobación de capital. El journal del snapshot parcial también se descarta durante el rollback.
 
 ## Idempotencia
 

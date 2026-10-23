@@ -63,7 +63,7 @@ void seed_signers(SettlementEngine& engine) {
 
 }  // namespace
 
-SettlementEngine ScenarioFactory::base_engine(Timestamp now) const {
+SettlementEngine ScenarioFactory::base_engine(Timestamp now, bool limited_reserves) const {
     ScenarioAccounts accounts;
     SettlementEngine engine;
     engine.set_time(now);
@@ -155,7 +155,7 @@ SettlementEngine ScenarioFactory::base_engine(Timestamp now) const {
             AccountRole::Vault,
             "",
             {
-                {"aUSDC", Amount::of(9'000'000'000)}
+                {"aUSDC", Amount::of(limited_reserves ? 100'000 : 9'000'000'000)}
             }
         ),
         now
@@ -167,7 +167,7 @@ SettlementEngine ScenarioFactory::base_engine(Timestamp now) const {
             AccountRole::Vault,
             "",
             {
-                {"aEUR", Amount::of(9'000'000'000)}
+                {"aEUR", Amount::of(limited_reserves ? 470'200'000 : 9'000'000'000)}
             }
         ),
         now
@@ -179,7 +179,7 @@ SettlementEngine ScenarioFactory::base_engine(Timestamp now) const {
             AccountRole::Vault,
             "",
             {
-                {"aGBP", Amount::of(4'000'000'000)}
+                {"aGBP", Amount::of(limited_reserves ? 100'000 : 4'000'000'000)}
             }
         ),
         now
@@ -323,7 +323,7 @@ ScenarioResult ScenarioFactory::partial_fill() const {
         intent,
         "plan-partial-003",
         accounts.operator_a,
-        "twap-4",
+        "adaptive-backup",
         {
             slice("slice-partial-2", "usdc-eur-primary", 400'000'000, 374'000'000, 2)
         },
@@ -333,7 +333,7 @@ ScenarioResult ScenarioFactory::partial_fill() const {
     result.engine.execute_plan(third);
 
     result.notes.push_back("two fills share one operating strategy");
-    result.notes.push_back("the third fill is rejected by the visible source window");
+    result.notes.push_back("the third fill is rejected by the intent-wide source window");
     return result;
 }
 
@@ -587,6 +587,30 @@ ScenarioResult ScenarioFactory::reserve_preflight() const {
     return result;
 }
 
+ScenarioResult ScenarioFactory::capital_preflight() const {
+    ScenarioAccounts accounts;
+    ScenarioResult result;
+    result.name = "capital-preflight";
+    result.engine = base_engine(kStartTime, true);
+
+    auto intent = result.engine.sign_intent(base_intent(accounts, kStartTime));
+    result.engine.submit_intent(intent);
+    auto plan = plan_for(
+        intent,
+        "plan-capital-preflight",
+        accounts.operator_a,
+        "twap-4",
+        {
+            slice("slice-capital-0", "usdc-eur-primary", 500'000'000, 470'000'000, 0)
+        },
+        kStartTime + 30
+    );
+    result.engine.set_time(kStartTime + 30);
+    result.engine.execute_plan(plan);
+    result.notes.push_back("settlement capital is checked before a plan becomes durable");
+    return result;
+}
+
 std::vector<std::string> scenario_names() {
     return {
         "baseline",
@@ -597,7 +621,8 @@ std::vector<std::string> scenario_names() {
         "operator-rotation",
         "emergency-pause",
         "replay-control",
-        "reserve-preflight"
+        "reserve-preflight",
+        "capital-preflight"
     };
 }
 
@@ -629,6 +654,9 @@ ScenarioResult run_scenario(const std::string& name) {
     }
     if (name == "reserve-preflight") {
         return factory.reserve_preflight();
+    }
+    if (name == "capital-preflight") {
+        return factory.capital_preflight();
     }
     throw std::runtime_error("unknown scenario: " + name);
 }

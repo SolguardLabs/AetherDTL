@@ -2,8 +2,10 @@
 
 ## Objetivo
 
-`EconomicRiskModel` estima reserva bajo un conjunto conservador de shocks. No modifica admisión ni
-saldos; produce una vista para límites, reporting y respuesta operativa.
+`EconomicRiskModel` estima reserva bajo un conjunto conservador de shocks. No modifica saldos: el
+motor consulta la vista después de aplicar provisionalmente un plan y revierte la transacción si
+el capital disponible resulta inferior a la reserva requerida. La misma vista se publica para
+reporting y respuesta operativa.
 
 ## Parámetros Por Defecto
 
@@ -89,3 +91,6 @@ La cola es superior a la mayor celda (`120`) e inferior a la suma sin diversific
 - `coverage_bps < 10,000` implica déficit inmediato bajo el escenario.
 - Un incremento de `L_corr` sin crecimiento de notional suele indicar menor diversificación.
 - `available_reserve` incluye balances de cuentas con rol `vault`, normalizados por precio.
+- La admisión calcula el requisito sobre los planes ejecutados, incluyendo el candidato; si
+  `shortfall > 0`, ledger, intent, exposiciones y journal regresan al snapshot anterior y el
+  candidato queda rechazado.

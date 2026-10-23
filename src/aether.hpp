@@ -892,9 +892,10 @@ class ScenarioFactory {
     ScenarioResult emergency_pause() const;
     ScenarioResult replay_control() const;
     ScenarioResult reserve_preflight() const;
+    ScenarioResult capital_preflight() const;
 
   private:
-    SettlementEngine base_engine(Timestamp now) const;
+    SettlementEngine base_engine(Timestamp now, bool limited_reserves = false) const;
     Intent base_intent(const ScenarioAccounts& accounts, Timestamp now) const;
     ExecutionPlan plan_for(const Intent& intent,
                            std::string plan_id,

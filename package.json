@@ -1,6 +1,6 @@
 {
   "name": "aetherdtl",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "C++20 intent settlement network with deterministic risk and security telemetry.",

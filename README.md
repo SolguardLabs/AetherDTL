@@ -1,7 +1,7 @@
 # AetherDTL
 
 [![CI](https://github.com/SolguardLabs/AetherDTL/actions/workflows/ci.yml/badge.svg)](https://github.com/SolguardLabs/AetherDTL/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/SolguardLabs/AetherDTL?label=production)](https://github.com/SolguardLabs/AetherDTL/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/github/v/release/SolguardLabs/AetherDTL?label=production)](https://github.com/SolguardLabs/AetherDTL/releases/tag/v2.0.0)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg)](https://isocpp.org/)
 [![Node.js 24](https://img.shields.io/badge/Node.js-24-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-F2E9D8.svg)](./LICENSE)
@@ -25,6 +25,7 @@ contrato de integración y los escenarios operativos de extremo a extremo.
 - Pausa de emergencia gobernada por una cuenta `guardian`.
 - Conciliación de cuentas, lanes, operadores, intents y exposiciones.
 - Modelo de reserva bajo shocks de precio, liquidez, correlación y concentración.
+- Admisión transaccional contra el presupuesto de capital posterior al settlement.
 - Señales operativas de cobertura, concentración, rechazos y suelo de reservas.
 - CI reproducible con warnings tratados como error, ASan y UBSan.
 
@@ -38,17 +39,17 @@ flowchart LR
     L["Ledger y lanes"] --> M
     M -->|"admitido"| E["SettlementEngine"]
     G["Risk Council"] -->|"pause / resume"| E
-    E -->|"transferencia atómica"| L
+    E -->|"transferencia provisional"| L
     E --> J["Journal canónico"]
     L --> R["EconomicRiskModel"]
+    R -->|"cobertura"| E
     J --> S["SecurityMonitor"]
     R --> API["Contrato JSON"]
     S --> API
 ```
 
-La separación entre admisión, mutación y observabilidad evita que el reporting sea una fuente de
-verdad contable. El `Ledger` conserva los saldos; el `Journal` registra la secuencia; los modelos
-de riesgo derivan vistas reproducibles sin escribir estado.
+El `Ledger` conserva los saldos y el `Journal` registra la secuencia. El modelo económico deriva
+una vista reproducible sin escribir estado; el motor la utiliza para confirmar o revertir el plan.
 
 ## Flujo De Liquidación
 
@@ -69,8 +70,14 @@ sequenceDiagram
     Matcher-->>Engine: MatchResult
     Engine->>Engine: snapshot transaccional
     Engine->>Vault: aplicar débitos y créditos
-    Engine->>Journal: registrar settlement
-    Engine-->>Operator: plan ejecutado
+    Engine->>Engine: valorar capital posterior al plan
+    alt capital suficiente
+        Engine->>Journal: confirmar settlement
+        Engine-->>Operator: plan ejecutado
+    else capital insuficiente
+        Engine->>Engine: restaurar snapshot
+        Engine-->>Operator: plan rechazado
+    end
 ```
 
 ## Modelo Económico
@@ -111,7 +118,9 @@ flowchart TD
     Q --> T["Snapshot transaccional"]
     T --> A["Aplicación"]
     A -->|"excepción"| RB["Rollback completo"]
-    A -->|"éxito"| C["Commit y journal"]
+    A -->|"éxito"| K{"Cobertura de capital"}
+    K -->|"insuficiente"| RB
+    K -->|"suficiente"| C["Commit y journal"]
 ```
 
 La política completa, los límites de confianza y la respuesta operativa están descritos en
@@ -199,7 +208,7 @@ con AddressSanitizer y UndefinedBehaviorSanitizer.
 | ------------ | --------------------------------------- |
 | `main`       | historial integrado y verificable       |
 | `production` | commit exacto aprobado para operación   |
-| `v1.0.0`     | artefacto inmutable de Production 1.0.0 |
+| `v2.0.0`     | artefacto inmutable de Production 2.0.0 |
 
 Consulta [CHANGELOG.md](./CHANGELOG.md) para cambios de versión y
 [CONTRIBUTING.md](./CONTRIBUTING.md) para el flujo de colaboración.

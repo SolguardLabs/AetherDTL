@@ -1,6 +1,6 @@
 # Documentación Técnica
 
-Esta documentación describe el diseño operativo de AetherDTL 1.0.0.
+Esta documentación describe el diseño operativo de AetherDTL 2.0.0.
 
 | Documento                                               | Contenido                               |
 | ------------------------------------------------------- | --------------------------------------- |

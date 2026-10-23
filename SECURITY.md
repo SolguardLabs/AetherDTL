@@ -4,8 +4,8 @@
 
 | Versión | Estado            |
 | ------- | ----------------- |
-| 1.0.x   | Mantenida         |
-| < 1.0   | Sin mantenimiento |
+| 2.0.x   | Mantenida         |
+| < 2.0   | Sin mantenimiento |
 
 La referencia operativa es el commit compartido por la rama `production` y el tag estable más
 reciente.
@@ -43,6 +43,7 @@ flowchart LR
         E["SettlementEngine"]
         G["Ledger"]
         J["Journal"]
+        C["EconomicRiskModel"]
     end
     I --> D
     P --> T
@@ -53,11 +54,14 @@ flowchart LR
     A --> E
     L --> E
     E --> G
+    G --> C
+    C --> E
     E --> J
 ```
 
-Los operadores no controlan saldos, roles ni políticas de lane. El reporting deriva del estado
-confirmado y nunca autoriza una transferencia.
+Los operadores no controlan saldos, roles ni políticas de lane. `EconomicRiskModel` recibe una
+vista constante del estado provisional; la decisión de confirmar permanece en el motor. La
+telemetría de `SecurityMonitor` deriva del estado confirmado y no autoriza transferencias.
 
 ## Invariantes
 
@@ -66,6 +70,8 @@ confirmado y nunca autoriza una transferencia.
 - Todo plan referencia un intent conocido y su digest exacto.
 - Un identificador de plan repetido solo puede terminar rechazado.
 - Los débitos agregados de un vault se validan antes de la primera mutación.
+- La exposición de origen se limita por intent firmado, con independencia de la estrategia.
+- Un plan solo se confirma si su snapshot posterior conserva cobertura de capital.
 - Una excepción durante settlement restaura ledger, intents y exposición.
 - Las reservas de cada vault permanecen por encima del suelo configurado.
 - Cancelación, expiración y pausa impiden nuevas ejecuciones.
@@ -77,8 +83,8 @@ flowchart TD
     S1["Firma y dominio canónico"] --> S2["Roles y estado activo"]
     S2 --> S3["Precio, slices y tiempo"]
     S3 --> S4["Liquidez agregada"]
-    S4 --> S5["Aplicación atómica"]
-    S5 --> S6["Journal e invariantes"]
+    S4 --> S5["Aplicación provisional"]
+    S5 --> S6["Capital, journal e invariantes"]
     S6 --> S7["Telemetría y alertas"]
     S7 --> S8["Pausa de emergencia"]
 ```
