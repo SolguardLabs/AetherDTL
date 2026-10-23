@@ -30,7 +30,10 @@ flowchart TD
     F -->|"no"| X
     F -->|"sí"| G{"Saldos agregados"}
     G -->|"no"| X
-    G -->|"sí"| H["Aplicación atómica"]
+    G -->|"sí"| H["Aplicación provisional"]
+    H --> I{"Capital cubierto"}
+    I -->|"no"| X
+    I -->|"sí"| J["Commit"]
 ```
 
 ## SecurityMonitor
@@ -84,6 +87,7 @@ código cero.
 
 ## Rollback
 
-Antes de mutar se copian ledger, IntentBook y buckets de exposición. Una excepción restaura las
-tres estructuras y el journal anterior, y solo entonces registra `atomic_execution` como rechazo.
+Antes de mutar se copian ledger, IntentBook y buckets de exposición. Una excepción o un déficit
+de capital restaura las tres estructuras y el journal anterior; solo entonces se registra el
+rechazo correspondiente.
 Esto mantiene alineados saldos, eventos y estado del intent.

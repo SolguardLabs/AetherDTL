@@ -256,10 +256,12 @@ ExecutionPlan SettlementEngine::execute_plan(ExecutionPlan plan) {
         return plan;
     }
 
-    const ExposureKey exposure_key{intent.id, plan.strategy_id};
-    const auto found_bucket = exposures_.find(exposure_key);
-    const auto current_source =
-        found_bucket == exposures_.end() ? Amount::zero() : found_bucket->second.used_source;
+    Amount current_source = Amount::zero();
+    for (const auto& [key, bucket] : exposures_) {
+        if (key.intent_id == intent.id) {
+            current_source = current_source.checked_add(bucket.used_source);
+        }
+    }
     const auto projected_source = current_source.checked_add(match.gross_source);
     if (projected_source > intent.max_source) {
         record_rejection(
@@ -304,6 +306,25 @@ ExecutionPlan SettlementEngine::execute_plan(ExecutionPlan plan) {
     plan.status = PlanStatus::Executed;
     plan.reason = "executed";
     plans_.push_back(plan);
+    bool capital_covered = false;
+    try {
+        capital_covered = EconomicRiskModel{}.assess(*this).solvent();
+    } catch (const std::exception&) {
+        capital_covered = false;
+    }
+    if (!capital_covered) {
+        plans_.pop_back();
+        ledger_ = ledger_before;
+        intents_ = intents_before;
+        exposures_ = exposures_before;
+        record_rejection(
+            plan,
+            MatchResult::reject({
+                ValidationIssue::of("capital_coverage", "execution plan exceeds settlement capital budget")
+            })
+        );
+        return plan;
+    }
     return plan;
 }
 
@@ -355,6 +376,7 @@ EngineRiskView SettlementEngine::risk_view() const {
 EngineInvariants SettlementEngine::invariants() const {
     EngineInvariants result;
     result.ledger_non_negative = ledger_.verify_non_negative();
+    std::map<std::string, Amount> aggregate_source;
 
     std::set<std::string> observed_plan_ids;
     for (const auto& plan : plans_) {
@@ -393,17 +415,18 @@ EngineInvariants SettlementEngine::invariants() const {
         if (bucket.used_source > intent.max_source) {
             result.local_limits_hold = false;
         }
+        aggregate_source[intent.id] = aggregate_source[intent.id].checked_add(bucket.used_source);
+    }
+
+    for (const auto& [intent_id, used_source] : aggregate_source) {
+        if (used_source > intents_.require(intent_id).max_source) {
+            result.local_limits_hold = false;
+        }
     }
 
     for (const auto& intent : intents_.intents()) {
         if (intent.status == IntentStatus::Filled) {
-            bool has_full_bucket = false;
-            for (const auto& [_, bucket] : exposures_) {
-                if (bucket.key.intent_id == intent.id && bucket.used_source >= intent.max_source) {
-                    has_full_bucket = true;
-                }
-            }
-            if (!has_full_bucket) {
+            if (aggregate_source[intent.id] < intent.max_source) {
                 result.lifecycle_consistent = false;
             }
         }
@@ -568,7 +591,13 @@ void SettlementEngine::apply_execution(const Intent& intent,
     );
 
     auto& stored_intent = intents_.require_mut(intent.id);
-    if (bucket.used_source >= stored_intent.max_source) {
+    Amount intent_used_source = Amount::zero();
+    for (const auto& [key, exposure] : exposures_) {
+        if (key.intent_id == intent.id) {
+            intent_used_source = intent_used_source.checked_add(exposure.used_source);
+        }
+    }
+    if (intent_used_source >= stored_intent.max_source) {
         stored_intent.status = IntentStatus::Filled;
     }
 }

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { assertCommon, byId, events, runScenario } from "../helpers/aether.ts";
 
-test("partial fills accumulate under a visible strategy window", () => {
+test("partial fills respect the signed source window across strategies", () => {
   const payload = runScenario("partial-fill");
   assertCommon(payload, "partial-fill");
 
@@ -20,6 +20,7 @@ test("partial fills accumulate under a visible strategy window", () => {
   assert.equal(first.status, "executed");
   assert.equal(second.status, "executed");
   assert.equal(third.status, "rejected");
+  assert.equal(third.strategy_id, "adaptive-backup");
   assert.match(third.reason, /source_window/);
   assert.equal(events(payload, "exposure_updated").length, 2);
 });

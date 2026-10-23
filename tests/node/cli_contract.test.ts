@@ -20,6 +20,7 @@ test("CLI lists stable operational scenarios", () => {
     "emergency-pause",
     "replay-control",
     "reserve-preflight",
+    "capital-preflight",
   ]);
 });
 

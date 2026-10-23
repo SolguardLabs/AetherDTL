@@ -18,7 +18,7 @@ test("economic model publishes correlated reserve requirements", () => {
   assert.equal(risk.cells.length, 1);
 });
 
-test("diversified lanes reduce the correlated tail below standalone loss", () => {
+test("multi-lane execution publishes a correlated capital requirement", () => {
   const payload = runScenario("operator-rotation");
   assertCommon(payload, "operator-rotation");
 
@@ -29,6 +29,25 @@ test("diversified lanes reduce the correlated tail below standalone loss", () =>
   assert.equal(payload.security.largest_operator_bps, 5_000);
   assert.equal(payload.security.largest_lane_bps, 5_000);
   assert.equal(payload.security.healthy, true);
+});
+
+test("capital admission rejects a plan without committing settlement transfers", () => {
+  const payload = runScenario("capital-preflight");
+  assertCommon(payload, "capital-preflight");
+
+  assert.equal(payload.risk.executed_plans, 0);
+  assert.equal(payload.risk.rejected_plans, 1);
+  assert.match(payload.plans[0].reason, /capital_coverage/);
+  assert.equal(payload.economic_risk.required_reserve, 0);
+  assert.equal(payload.economic_risk.solvent, true);
+  assert.equal(
+    payload.accounts.find((account) => account.id === "alice")?.balances.aUSDC.available,
+    5_000_000_000,
+  );
+  assert.equal(
+    payload.accounts.find((account) => account.id === "vault-eur")?.balances.aEUR.available,
+    470_200_000,
+  );
 });
 
 test("inactive settlement has no modeled execution requirement", () => {

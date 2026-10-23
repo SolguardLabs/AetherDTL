@@ -37,6 +37,7 @@ Coordina tiempo, intents, planes y transición de estado. Sus responsabilidades 
 - respetar la pausa global;
 - delegar validación estática y económica al `Matcher`;
 - crear un snapshot antes de mutar;
+- comprobar el uso agregado del intent y la cobertura de capital posterior al plan;
 - confirmar el plan o restaurar el snapshot completo.
 
 ### Ledger
@@ -65,7 +66,8 @@ Evalúa el plan sin mutar:
 ### Vistas Derivadas
 
 `Reconciler`, `EconomicRiskModel` y `SecurityMonitor` reciben una referencia constante. Esto evita
-que una consulta de reporting pueda modificar el ledger.
+que una consulta modifique el ledger. El motor usa el resultado de `EconomicRiskModel` para la
+decisión de commit sin delegarle la escritura.
 
 ## Propiedad Del Estado
 
