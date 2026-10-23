@@ -24,8 +24,9 @@ test("multi-lane execution publishes a correlated capital requirement", () => {
 
   const risk = payload.economic_risk;
   assert.equal(risk.cells.length, 2);
-  assert.ok(risk.correlated_loss < risk.standalone_loss);
-  assert.ok(risk.correlated_loss > Math.max(...risk.cells.map((cell: any) => cell.stressed_loss)));
+  assert.equal(risk.gross_source_notional, 600_000_000);
+  assert.ok(risk.required_reserve > 0);
+  assert.ok(risk.coverage_bps > 10_000);
   assert.equal(payload.security.largest_operator_bps, 5_000);
   assert.equal(payload.security.largest_lane_bps, 5_000);
   assert.equal(payload.security.healthy, true);
